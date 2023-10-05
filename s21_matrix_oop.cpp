@@ -7,11 +7,12 @@ S21Matrix::S21Matrix() {
 }
 
 S21Matrix::S21Matrix(int rows, int cols) {
-  if (rows > 0 && cols > 0) {
-    rows_ = rows;
-    cols_ = cols;
-    allocate_matrix();
-  }
+  if (rows < 1 || cols < 1)
+    throw std::logic_error("rows & cols can't be less then 1x1");
+
+  rows_ = rows;
+  cols_ = cols;
+  allocate_matrix();
 }
 
 S21Matrix::S21Matrix(const S21Matrix &other) {
@@ -25,6 +26,13 @@ S21Matrix::S21Matrix(const S21Matrix &other) {
       }
     }
   }
+}
+
+S21Matrix::S21Matrix(S21Matrix &&other) {
+  rows_ = other.rows_;
+  cols_ = other.cols_;
+  matrix_ = other.matrix_;
+  other.matrix_ = nullptr;
 }
 
 S21Matrix::~S21Matrix() {
@@ -48,6 +56,12 @@ void S21Matrix::destroy_matrix() {
   }
 }
 
+void S21Matrix::fillMatrix() {
+  for (int i = 0; i < rows_; ++i)
+    for (int j = 0; j < cols_; ++j)
+      matrix_[i][j] = rows_ * i + j + 1;
+}
+
 bool S21Matrix::EqMatrix(const S21Matrix &other) {
   bool result = true;
   if (rows_ == other.rows_ && cols_ == other.cols_) {
@@ -62,19 +76,21 @@ bool S21Matrix::EqMatrix(const S21Matrix &other) {
 }
 
 void S21Matrix::SumMatrix(const S21Matrix &other) {
-  if (rows_ == other.rows_ && cols_ == other.cols_) {
-    for (int i = 0; i < rows_; ++i)
-      for (int j = 0; j < cols_; ++j)
-        matrix_[i][j] += other.matrix_[i][j];
-  }
+  if (rows_ != other.rows_ || cols_ != other.cols_)
+    throw std::logic_error("the size of the matrices must match");
+
+  for (int i = 0; i < rows_; ++i)
+    for (int j = 0; j < cols_; ++j)
+      matrix_[i][j] += other.matrix_[i][j];
 }
 
 void S21Matrix::SubMatrix(const S21Matrix &other) {
-  if (rows_ == other.rows_ && cols_ == other.cols_) {
-    for (int i = 0; i < rows_; ++i)
-      for (int j = 0; j < cols_; ++j)
-        matrix_[i][j] -= other.matrix_[i][j];
-  }
+  if (rows_ != other.rows_ || cols_ != other.cols_)
+    throw std::logic_error("the size of the matrices must match");
+
+  for (int i = 0; i < rows_; ++i)
+    for (int j = 0; j < cols_; ++j)
+      matrix_[i][j] -= other.matrix_[i][j];
 }
 
 void S21Matrix::MulNumber(double number) {
@@ -83,22 +99,22 @@ void S21Matrix::MulNumber(double number) {
       matrix_[i][j] *= number;
 }
 
-/* leaks ??? */
-
 void S21Matrix::MulMatrix(const S21Matrix &other) {
-  if (cols_ == other.rows_) {
-    S21Matrix tmp_matrix(rows_, other.cols_);
-    for (int i = 0; i < rows_; ++i)
-      for (int j = 0; j < other.cols_; ++j)
-        for (int ii = 0; ii < cols_; ++ii)
-          tmp_matrix.matrix_[i][j] += matrix_[i][ii] * other.matrix_[ii][j];
-    destroy_matrix();
-    matrix_ = tmp_matrix.matrix_;
-    rows_ = tmp_matrix.rows_;
-    cols_ = tmp_matrix.cols_;
-  } else {
-    throw std::logic_error("cols must be equal rows");
-  }
+  if (this->cols_ != other.rows_)
+    throw std::logic_error(
+        "cols of the 1-st matrix must be equal rows of the 2-nd matrix");
+
+  S21Matrix tmp_matrix(rows_, other.cols_);
+  for (int i = 0; i < rows_; ++i)
+    for (int j = 0; j < other.cols_; ++j)
+      for (int ii = 0; ii < cols_; ++ii)
+        tmp_matrix.matrix_[i][j] += matrix_[i][ii] * other.matrix_[ii][j];
+
+  destroy_matrix();
+  matrix_ = tmp_matrix.matrix_;
+  rows_ = tmp_matrix.rows_;
+  cols_ = tmp_matrix.cols_;
+  tmp_matrix.matrix_ = nullptr;
 }
 
 S21Matrix S21Matrix::Transpose() {
@@ -109,8 +125,46 @@ S21Matrix S21Matrix::Transpose() {
   return tmp_matrix;
 }
 
-int S21Matrix::GetRows() { return rows_; }
-int S21Matrix::GetCols() { return cols_; }
+int S21Matrix::getRows() { return rows_; }
+int S21Matrix::getCols() { return cols_; }
+
+void S21Matrix::setRows(int rows) {
+  if (rows < 1)
+    throw std::logic_error("Rows must be more than 0");
+
+  S21Matrix tmp(rows, cols_);
+  for (int i = 0; i < rows; ++i) {
+    for (int j = 0; j < cols_; ++j) {
+      if (i < this->rows_)
+        tmp.matrix_[i][j] = this->matrix_[i][j];
+      else
+        tmp.matrix_[i][j] = 0;
+    }
+  }
+  this->destroy_matrix();
+  this->rows_ = rows;
+  this->matrix_ = tmp.matrix_;
+  tmp.matrix_ = nullptr;
+}
+
+void S21Matrix::setCols(int cols) {
+  if (cols < 1)
+    throw std::logic_error("Cols must be more than 0");
+
+  S21Matrix tmp(rows_, cols);
+  for (int i = 0; i < rows_; ++i) {
+    for (int j = 0; j < cols; ++j) {
+      if (j < this->cols_)
+        tmp.matrix_[i][j] = this->matrix_[i][j];
+      else
+        tmp.matrix_[i][j] = 0;
+    }
+  }
+  this->destroy_matrix();
+  this->cols_ = cols;
+  this->matrix_ = tmp.matrix_;
+  tmp.matrix_ = nullptr;
+}
 
 S21Matrix S21Matrix::GetMinor(const S21Matrix &other, int row, int col) {
   for (int i = 0; i < row; ++i)
@@ -137,6 +191,7 @@ double S21Matrix::Determinant() {
   if (rows_ != cols_) {
     throw std::logic_error("Matrix is not square");
   }
+
   for (int j = 0, sign = 1; j < cols_; j++, sign *= -1) {
     if (rows_ == 1) {
       result = matrix_[0][0];
@@ -183,27 +238,23 @@ S21Matrix S21Matrix::InverseMatrix() {
   return result;
 }
 
-void S21Matrix::fillMatrix() {
-  for (int i = 0; i < rows_; ++i) {
-    for (int j = 0; j < cols_; ++j) {
-      matrix_[i][j] = rows_ * i + j + 1;
+std::istream &operator>>(std::istream &stream, S21Matrix &matrix) {
+  for (int i = 0; i < matrix.rows_; ++i) {
+    for (int j = 0; j < matrix.cols_; ++j) {
+      stream >> matrix.matrix_[i][j];
     }
   }
-  matrix_[2][2] = 0;
+  return stream;
 }
 
-void S21Matrix::printMatrix() {
-  for (int i = 0; i < rows_; ++i) {
-    for (int j = 0; j < cols_; ++j)
-      std::cout << matrix_[i][j] << " ";
-    std::cout << "\n";
+std::ostream &operator<<(std::ostream &stream, const S21Matrix &matrix) {
+  for (int i = 0; i < matrix.rows_; ++i) {
+    for (int j = 0; j < matrix.cols_; ++j) {
+      stream << matrix.matrix_[i][j] << " ";
+    }
+    stream << "\n";
   }
-}
-
-void S21Matrix::inputMatrix() {
-  for (int i = 0; i < rows_; ++i)
-    for (int j = 0; j < cols_; ++j)
-      std::cin >> matrix_[i][j];
+  return stream;
 }
 
 S21Matrix S21Matrix::operator+(const S21Matrix &other) {
@@ -226,6 +277,12 @@ S21Matrix S21Matrix::operator*(const S21Matrix &other) {
 
 S21Matrix S21Matrix::operator*(double number) {
   S21Matrix result(*this);
+  result.MulNumber(number);
+  return result;
+}
+
+S21Matrix operator*(double number, const S21Matrix &other) {
+  S21Matrix result(other);
   result.MulNumber(number);
   return result;
 }
